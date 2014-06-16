@@ -1,0 +1,84 @@
+#!/bin/bash
+
+while getopts s:S:E:d:RD option
+do
+    case "${option}"
+    in
+        s) show=${OPTARG};;
+        d) location=${OPTARG};;
+        R) recursive=1;;
+        D) delete=1;;
+        S) num_season=${OPTARG};;
+        E) num_episode=${OPTARG};;
+    esac
+done
+echo "Show: $show, Loc: $location, Episode # $num_episode, Season # $num_season, Recursive: $recursive, Delete: $delete"
+echo `pwd`
+# Verify sfv checksum
+function checksum {
+    if [ -f *"$show"*.sfv ]
+    then
+        cksfv -f *"$show"*.sfv
+        if [ $? -ne 0 ]
+        then
+            echo 'ERROR: sfv file verification failed'
+            exit 1
+        fi
+    fi
+}
+
+#Extract file
+function extract {
+    if [ -f *"$show"*.rar ]
+    then
+        unrar e *.rar
+        if [ $? -ne 0 ]
+        then
+            echo 'ERROR: unrar failed'
+            exit 1
+        fi
+    fi
+}
+
+# Discover file extention
+function extention () {
+    if [ -f "$3"*S0"$1"E0"$2"*.mkv ]
+    then 
+        echo 'mkv video found'
+        ext='mkv'
+    elif [ -f "$3"*S*"$1"E*"$2"*.avi ]
+    then
+        echo 'avi video found'
+        ext='avi'
+    elif [ -f "$3"*S*"$1"E*"$2"*.mp4 ]
+    then
+        echo 'mp4 video found'
+        ext='mp4'
+    else
+        echo 'ERROR: no media file found'
+        exit 1
+    fi
+    return $ext
+}
+
+# Renames and copies the eppisodes to correct folder.
+for season in $(eval echo {1..$num_season})
+do
+    for episode in $(eval echo {1..$num_episode})
+    do
+        if [ $episode -lt 10 ]
+        then
+            echo 'Less than 10'
+            #cd "$show"*S*"$season"E0"$episode"*
+            extention $season $episode $show
+            rsync -avuP *"$show"*S0"$season"E0"$episode"* "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E0"$episode"."$ext"
+            #cd ..
+        else
+            #cd "$show"*S*"$season"E"$episode"*
+            rsync -avuP *"$show"*S0"$season"E"$episode"* "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E"$episode"."$ext"
+            #cd ..
+        fi
+        ((episode++))
+    done
+done
+
