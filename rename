@@ -2,7 +2,7 @@
 check=0
 delete=0
 recursive=0
-
+rarable=0
 
 #Usage
 usage () {
@@ -51,6 +51,14 @@ checksum () {
         fi
     fi
 }
+check_unrar () {
+    if hash unrar 2>/dev/null; then
+        #We can continue
+    else
+        echo "unrar not found"
+        exit 1
+    fi
+}
 
 
 #Extract file
@@ -58,6 +66,7 @@ extract () {
     if [ -f *"$1"*.rar ]
     then
         echo 'Extracting now..'
+        check_unrar
         unrar e *.rar
         if [ $? -ne 0 ]
         then
@@ -121,3 +130,4 @@ do
         ((episode++))
     done
 done
+
