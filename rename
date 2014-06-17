@@ -1,6 +1,22 @@
 #!/bin/bash
+check=0
+delete=0
+recursive=0
 
-while getopts s:S:E:d:RD option
+
+#Usage
+usage () {
+    echo "$0"
+    echo "      -s    Show name"
+    echo "      -d    Destination directory"
+    echo "      -c    Weather to check sfv's or not"
+    echo "      -S    Number of seasons to look for"
+    echo "      -E    Number of Episodes to look for"
+    echo "      -h    Print help message"
+    exit 0
+}
+
+while getopts s:S:E:d:RchD option
 do
     case "${option}"
     in
@@ -8,41 +24,54 @@ do
         d) location=${OPTARG};;
         R) recursive=1;;
         D) delete=1;;
+        c) check=1;;
         S) num_season=${OPTARG};;
         E) num_episode=${OPTARG};;
+        h) usage;;
     esac
 done
 echo "Show: $show, Loc: $location, Episode # $num_episode, Season # $num_season, Recursive: $recursive, Delete: $delete"
 echo `pwd`
 # Verify sfv checksum
-function checksum {
-    if [ -f *"$show"*.sfv ]
+checksum () {
+    if [ $check -eq 1 ]
     then
-        cksfv -f *"$show"*.sfv
-        if [ $? -ne 0 ]
+        if [ -f *.sfv ]
         then
-            echo 'ERROR: sfv file verification failed'
-            exit 1
+
+            echo 'Checking sfv now..'
+            cksfv -f *.sfv
+            if [ $? -ne 0 ]
+            then
+                echo 'ERROR: sfv file verification failed'
+                exit 1
+            fi
+        else
+            echo 'No sfv to check'
         fi
     fi
 }
 
+
 #Extract file
-function extract {
-    if [ -f *"$show"*.rar ]
+extract () {
+    if [ -f *"$1"*.rar ]
     then
+        echo 'Extracting now..'
         unrar e *.rar
         if [ $? -ne 0 ]
         then
             echo 'ERROR: unrar failed'
             exit 1
         fi
+    else
+        echo 'No files to extract'
     fi
 }
 
 # Discover file extention
-function extention () {
-    if [ -f "$3"*S0"$1"E0"$2"*.mkv ]
+extention () {
+    if [ -f "$3"*S0"$1"E*"$2"*.mkv ]
     then 
         echo 'mkv video found'
         ext='mkv'
@@ -56,9 +85,8 @@ function extention () {
         ext='mp4'
     else
         echo 'ERROR: no media file found'
-        exit 1
+        #exit 1
     fi
-    return $ext
 }
 
 # Renames and copies the eppisodes to correct folder.
@@ -68,17 +96,28 @@ do
     do
         if [ $episode -lt 10 ]
         then
-            echo 'Less than 10'
-            #cd "$show"*S*"$season"E0"$episode"*
+            cd "$show"*S0"$season"E0"$episode"*  
+            cdir=$?
             extention $season $episode $show
-            rsync -avuP *"$show"*S0"$season"E0"$episode"* "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E0"$episode"."$ext"
-            #cd ..
+            checksum $show
+            extract $show
+            rsync -avuP *"$show"*S0"$season"E0"$episode"*."$ext" "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E0"$episode"."$ext"
+            if [ $cdir -eq 0 ]
+            then
+                cd ..
+            fi
         else
-            #cd "$show"*S*"$season"E"$episode"*
-            rsync -avuP *"$show"*S0"$season"E"$episode"* "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E"$episode"."$ext"
-            #cd ..
+            cd "$show"*S*"$season"E"$episode"*
+            cdir=$?
+            extention $season $episode $show
+            checksum $show
+            extract $show
+            rsync -avuP *"$show"*S0"$season"E"$episode"*."$ext" "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E"$episode"."$ext"
+            if [ $cdir -eq 0 ]
+            then
+                cd ..
+            fi
         fi
         ((episode++))
     done
 done
-
