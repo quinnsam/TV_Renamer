@@ -3,6 +3,8 @@ check=0
 delete=0
 recursive=0
 rarable=0
+verb=''
+dry=''
 
 #Usage
 usage () {
@@ -16,7 +18,7 @@ usage () {
     exit 0
 }
 
-while getopts s:S:E:d:RchD option
+while getopts s:S:E:d:RnvchD option
 do
     case "${option}"
     in
@@ -27,19 +29,25 @@ do
         c) check=1;;
         S) num_season=${OPTARG};;
         E) num_episode=${OPTARG};;
+        v) verb='v';;
+        n) dry='n';;
         h) usage;;
     esac
 done
 echo "Show: $show, Loc: $location, Episode # $num_episode, Season # $num_season, Recursive: $recursive, Delete: $delete"
 echo `pwd`
+
 # Verify sfv checksum
 checksum () {
+    check_cksfv
     if [ $check -eq 1 ]
     then
         if [ -f *.sfv ]
         then
-
-            echo 'Checking sfv now..'
+            if [ "$verb" == 'v' ]
+            then
+                echo 'Checking sfv now..'
+            fi
             cksfv -f *.sfv
             if [ $? -ne 0 ]
             then
@@ -47,15 +55,32 @@ checksum () {
                 exit 1
             fi
         else
-            echo 'No sfv to check'
+            if [ "$verb" == 'v' ]
+            then
+                echo 'No sfv to check'
+            fi
         fi
     fi
 }
+
+#Verifies cksfv is installed
+check_cksfv () {
+    if hash cksfv 2>/dev/null; then
+        #We can continue
+        return 0
+    else
+        echo "ERROR: cksfv not found"
+        exit 1
+    fi
+}
+
+#Verifiys that unrar is installed
 check_unrar () {
     if hash unrar 2>/dev/null; then
         #We can continue
+        return 0
     else
-        echo "unrar not found"
+        echo "ERROR: unrar not found"
         exit 1
     fi
 }
@@ -65,7 +90,10 @@ check_unrar () {
 extract () {
     if [ -f *"$1"*.rar ]
     then
-        echo 'Extracting now..'
+        if [ "$verb" == 'v' ]
+        then
+            echo 'Extracting now..'
+        fi
         check_unrar
         unrar e *.rar
         if [ $? -ne 0 ]
@@ -74,23 +102,39 @@ extract () {
             exit 1
         fi
     else
-        echo 'No files to extract'
+        if [ "$verb" == 'v' ]
+        then
+            echo 'No files to extract'
+        fi
     fi
 }
 
 # Discover file extention
 extention () {
+    # 1.) Season
+    # 2.) episode
+    # 3.) show
+
     if [ -f "$3"*S0"$1"E*"$2"*.mkv ]
-    then 
-        echo 'mkv video found'
+    then
+        if [ "$verb" == 'v' ]
+        then
+            echo 'mkv video found'
+        fi
         ext='mkv'
     elif [ -f "$3"*S*"$1"E*"$2"*.avi ]
     then
-        echo 'avi video found'
+        if [ "$verb" == 'v' ]
+        then
+            echo 'avi video found'
+        fi
         ext='avi'
     elif [ -f "$3"*S*"$1"E*"$2"*.mp4 ]
     then
-        echo 'mp4 video found'
+        if [ "$verb" == 'v' ]
+        then
+            echo 'mp4 video found'
+        fi
         ext='mp4'
     else
         echo 'ERROR: no media file found'
@@ -98,30 +142,98 @@ extention () {
     fi
 }
 
+check_destination () {
+    if [ -d "$location"/"$show"/"$show".S0"$1" ]
+    then
+        if [ "$verb" == 'v' ]
+        then
+            echo "$show Season $1 Directory already exists"
+        fi
+        return 0
+    else
+        if [ "$verb" == 'v' ]
+        then
+            echo "Creating $show Season $1 directory"
+        fi
+        #mkdir -p "$location"/"$show"/"$show".S0"$1"
+    fi
+}
+
 # Renames and copies the eppisodes to correct folder.
 for season in $(eval echo {1..$num_season})
 do
+    # Check if Show and Season folder exist
     for episode in $(eval echo {1..$num_episode})
     do
         if [ $episode -lt 10 ]
         then
-            cd "$show"*S0"$season"E0"$episode"*  
-            cdir=$?
-            extention $season $episode $show
-            checksum $show
-            extract $show
-            rsync -avuP *"$show"*S0"$season"E0"$episode"*."$ext" "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E0"$episode"."$ext"
+            if [ $recursive -eq 1 ]
+            then
+                cd "$show"*S0"$season"E0"$episode"* >/dev/null 2>&1 
+                cdir=$?
+            else
+                cdir=1
+            fi
+            if [ -f *"$show"*S0"$season"E0"$episode"* ]
+            then
+                extention $season $episode $show
+                checksum $show
+                extract $show
+                check_destination $season
+                if [ "$verb" == 'v' ]
+                then
+                    file=`ls *"$show"*S*"$season"E*"$episode"*."$ext"`
+                    echo Copying: "$file" \-\-\> "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E0"$episode"."$ext"
+                fi
+                rsync -au"$verb$dry" *"$show"*S0"$season"E0"$episode"*."$ext" "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E0"$episode"."$ext"
+                if [ "$verb" == 'v' ]
+                then
+                    echo "--------------------------------------------------------------------------------"
+                fi
+            else
+                if [ "$verb" == 'v' ]
+                then
+                    echo "$show Season $season Episode $episode not found"
+                fi
+            fi
+            
             if [ $cdir -eq 0 ]
             then
+                echo 
                 cd ..
             fi
+        
         else
-            cd "$show"*S*"$season"E"$episode"*
-            cdir=$?
-            extention $season $episode $show
-            checksum $show
-            extract $show
-            rsync -avuP *"$show"*S0"$season"E"$episode"*."$ext" "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E"$episode"."$ext"
+            if [ $recursive -eq 1 ]
+            then
+                cd "$show"*S*"$season"E"$episode"* >/dev/null 2>&1
+                cdir=$?
+            else
+                cdir=1
+            fi
+            if [ -f *"$show"*S0"$season"E"$episode"* ]
+            then
+                extention $season $episode $show
+                checksum $show
+                extract $show
+                check_destination $season
+                if [ "$verb" == 'v' ]
+                then
+                    file=`ls *"$show"*S*"$season"E*"$episode"*."$ext"`
+                    echo Copying: "$file" \-\-\> "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E"$episode"."$ext"
+                fi
+                rsync -au"$verb$dry" *"$show"*S0"$season"E"$episode"*."$ext" "$location"/"$show"/"$show".S0"$season"/"$show".S0"$season"E"$episode"."$ext"
+                if [ "$verb" == 'v' ]
+                then
+                    echo "--------------------------------------------------------------------------------"
+                fi
+            else
+                if [ "$verb" == 'v' ]
+                then
+                    echo "$show Season $season Episode $episode not found"
+                fi
+            fi
+
             if [ $cdir -eq 0 ]
             then
                 cd ..
